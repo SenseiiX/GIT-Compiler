@@ -1,4 +1,4 @@
-name: FusionX-Release
+name: FusionX-AOSP-CLANG
 
 on:
   pull_request:
@@ -19,7 +19,7 @@ on:
         options:
           - munch-sus
           - exp-sus
-          - dev-senx
+          - dev-base
       KERNEL_TREE_2:
         description: 'Kernel Tree 2'
         default: 'https://github.com/SenseiiX/fusionX_sm8250'
@@ -32,9 +32,9 @@ on:
         options:
           - munch-next
           - exp-nxt
-          - dev-senx
+          - dev-base
       VERSION:
-        description: 'Kernel Zip Version'
+        description: 'Zip Version'
         default: '1.x'
         required: false
       ANYKERNEL_URL:
@@ -49,6 +49,12 @@ on:
         description: 'Custom Kernel Version'
         default: '-FusionX'
         required: false
+      CODENAME:
+        description: 'Device Codename'
+        default: 'MUNCH'
+        required: false
+
+
 jobs:
   build:
     strategy:
@@ -60,6 +66,9 @@ jobs:
       UPLOAD_TO_RELEASE: false
 
     steps:
+      - name: Set Start Time
+        run: echo "BUILD_START_TIME=$(date +%s)" >> $GITHUB_ENV
+
       - name: Install Dependencies
         run: sudo apt install flex libncurses6
 
@@ -72,11 +81,16 @@ jobs:
       - name: Set Kernel Environment Variables
         run: |
           case "${{ matrix.kernel }}" in
-            1) echo "KERNEL_TREE=${{ github.event.inputs.KERNEL_TREE_1 }}" >> $GITHUB_ENV
-               echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_1 }}" >> $GITHUB_ENV ;;
-            2) echo "KERNEL_TREE=${{ github.event.inputs.KERNEL_TREE_2 }}" >> $GITHUB_ENV
-               echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_2 }}" >> $GITHUB_ENV ;;
+            1) 
+               echo "KERNEL_TREE=${{ github.event.inputs.KERNEL_TREE_1 }}" >> $GITHUB_ENV
+               echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_1 }}" >> $GITHUB_ENV
+               echo "KERNEL_VARIANT=SUSFS" >> $GITHUB_ENV ;;
+            2) 
+               echo "KERNEL_TREE=${{ github.event.inputs.KERNEL_TREE_2 }}" >> $GITHUB_ENV
+               echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_2 }}" >> $GITHUB_ENV
+               echo "KERNEL_VARIANT=NEXT" >> $GITHUB_ENV ;;
           esac
+          
 
       - name: Checkout Kernel
         run: git clone --depth=1 $KERNEL_TREE -b $KERNEL_TREE_BRANCH kernel_tree
@@ -87,7 +101,7 @@ jobs:
           if [[ "${{ github.event.inputs.CUSTOM_SED }}" != "-FusionX" ]]; then
             sed -i -e 's/CONFIG_LOCALVERSION="-FusionX"/CONFIG_LOCALVERSION="${{ github.event.inputs.CUSTOM_SED }}"/' arch/arm64/configs/vendor/munch_defconfig
           fi
-
+          
       - name: Apply Patches
         if: matrix.kernel
         run: |
@@ -105,6 +119,12 @@ jobs:
           sed -i 's/qcom,mdss-pan-physical-width-dimension = <70>;$/qcom,mdss-pan-physical-width-dimension = <695>;/' arch/arm64/boot/dts/vendor/qcom/dsi-panel-l11r-38-08-0a-dsc-cmd.dtsi
           sed -i 's/qcom,mdss-pan-physical-height-dimension = <155>;$/qcom,mdss-pan-physical-height-dimension = <1546>;/' arch/arm64/boot/dts/vendor/qcom/dsi-panel-l11r-38-08-0a-dsc-cmd.dtsi
       
+      - name: Record build start time
+         id: build_start
+         run: |
+           echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
+           echo "start_date=$(TZ='Asia/Manila' date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
       - name: Build Kernel
         run: |
           export PATH="$(pwd)/clang/bin:$PATH"
@@ -123,6 +143,15 @@ jobs:
             mv out/arch/arm64/boot/dtbo.img ../munch-miui-dtbo.img
             mv out/arch/arm64/boot/dtb ../munch-effcpu-dtb
           fi
+          
+      - name: Record build end time
+         id: build_end
+         run: |
+           end_time=$(date +%s)
+           start_time=${{ steps.build_start.outputs.start_time }}
+           build_duration=$((end_time - start_time))
+           echo "end_time=$end_time" >> $GITHUB_OUTPUT
+           echo "build_duration=$build_duration" >> $GITHUB_OUTPUT
 
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
@@ -134,49 +163,96 @@ jobs:
             munch-normal-dtb
             munch-effcpu-dtb
             Image.gz
-
-  package_anykernel:
-    needs: build
-    strategy:
-      matrix:
-        kernel: [1, 2]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download Kernel Build Original
-        uses: actions/download-artifact@v4
+            
+      - name: Upload Build Info
+        uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ matrix.kernel }}-original
-          path: kernel-${{ matrix.kernel }}-original
-
-      - name: Download Kernel Build Modified
-        uses: actions/download-artifact@v4
-        with:
-          name: kernel-${{ matrix.kernel }}-modified
-          path: kernel-${{ matrix.kernel }}-modified
-
-      - name: Clone AnyKernel3
-        run: git clone --recursive --depth=1 ${{ github.event.inputs.ANYKERNEL_URL }} -b ${{ github.event.inputs.ANYKERNEL_BRANCH }} AnyKernel3-${{ matrix.kernel }}
-
-      - name: Move Kernel Files to AnyKernel3
-        run: |
-          mv kernel-${{ matrix.kernel }}-original/* AnyKernel3-${{ matrix.kernel }}/
-          mv kernel-${{ matrix.kernel }}-modified/* AnyKernel3-${{ matrix.kernel }}/
+          name: build-info-${{ matrix.kernel }}
+          path: |
+            $GITHUB_ENV
+            
+   package_anykernel:
+     needs: build
+     strategy:
+       matrix:
+         kernel: [1, 2]
+     runs-on: ubuntu-latest
+ 
+     steps:
+       - name: Download Kernel Build Original
+         uses: actions/download-artifact@v4
+         with:
+           name: kernel-${{ matrix.kernel }}-original
+           path: kernel-${{ matrix.kernel }}-original
+ 
+       - name: Download Kernel Build Modified
+         uses: actions/download-artifact@v4
+         with:
+           name: kernel-${{ matrix.kernel }}-modified
+           path: kernel-${{ matrix.kernel }}-modified
+           
+       - name: Download build metrics
+         uses: actions/download-artifact@v4
+         with:
+           name: build-metrics-${{ matrix.kernel }}
+           path: build-metrics
+ 
+       - name: Clone AnyKernel3
+         run: git clone --recursive --depth=1 ${{ github.event.inputs.ANYKERNEL_URL }} -b ${{ github.event.inputs.ANYKERNEL_BRANCH }} AnyKernel3-${{ matrix.kernel }}
+ 
+       - name: Move Kernel Files to AnyKernel3
+         run: |
+           mv kernel-${{ matrix.kernel }}-original/* AnyKernel3-${{ matrix.kernel }}/
+           mv kernel-${{ matrix.kernel }}-modified/* AnyKernel3-${{ matrix.kernel }}/
 
       - name: Define ZIP Name
         run: |
-          COMPILED_DATE=$(date +%Y%m%d)
+          # Use Philippine timezone (PHT/+0800)
+          COMPILED_DATE=$(TZ=Asia/Manila date +%Y%m%d)
           if [[ "${{ matrix.kernel }}" == "1" ]]; then
-            echo "ZIP_NAME=FusionX-SUSFS-${{ github.event.inputs.VERSION }}-$COMPILED_DATE" >> $GITHUB_ENV
+            ZIP_NAME="FusionX-SUSFS-${{ github.event.inputs.CODENAME }}-$COMPILED_DATE"
+            KERNEL_NAME="FusionX-SUSFS"
           else
-            echo "ZIP_NAME=FusionX-NEXT-${{ github.event.inputs.VERSION }}-$COMPILED_DATE" >> $GITHUB_ENV
+            ZIP_NAME="FusionX-NEXT-${{ github.event.inputs.CODENAME }}-$COMPILED_DATE"
+            KERNEL_NAME="FusionX-NEXT"
           fi
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "KERNEL_NAME=$KERNEL_NAME" >> $GITHUB_ENV
+          
+      - name: Package Kernel
+        run: |
+          cd AnyKernel3-${{ matrix.kernel }}
+          zip -r9 ../${{ env.ZIP_NAME }}.zip *
+
+      - name: Read build metrics
+         id: read_metrics
+         run: |
+           start_date=$(cat build-metrics/start-date-${{ matrix.kernel }})
+           duration=$(cat build-metrics/duration-${{ matrix.kernel }})
+           echo "start_date=$start_date" >> $GITHUB_OUTPUT
+           echo "duration=$duration" >> $GITHUB_OUTPUT
+           
+           # Convert seconds to minutes and seconds format
+           minutes=$((duration / 60))
+           seconds=$((duration % 60))
+           echo "build_time=${minutes}m ${seconds}s" >> $GITHUB_OUTPUT
+      
+     - name: Upload Flashable Kernel Zip to Telegram
+         uses: appleboy/telegram-action@master
+         with:
+           to: ${{ secrets.TELEGRAM_CHAT_ID }}
+           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+           message: |
+            ✅ ${{ env.KERNEL_NAME }} Compiled!!
+            Date: ${{ steps.read_metrics.outputs.start_date }}
+            Build Duration: ${{ steps.read_metrics.outputs.build_time }}
+            Device: MUNCH
+            Branch: ${{ matrix.kernel == 1 && github.event.inputs.KERNEL_TREE_BRANCH_1 || github.event.inputs.KERNEL_TREE_BRANCH_2 }}
+             (Its either a Test or Stable)
+          document: ${{ env.ZIP_NAME }}.zip
       
       - name: Upload Flashable Kernel Zip
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ZIP_NAME }}
-          path: |
-            AnyKernel3-${{ matrix.kernel }}/
-            !AnyKernel3-${{ matrix.kernel }}/.git
-            !AnyKernel3-${{ matrix.kernel }}/.github
+          path: ${{ env.ZIP_NAME }}.zip
