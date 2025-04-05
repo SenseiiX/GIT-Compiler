@@ -1,4 +1,4 @@
-name: FusionX-AOSP-Release
+name: FusionX-DEBUG-NEUTRON
  
 on:
    pull_request:
