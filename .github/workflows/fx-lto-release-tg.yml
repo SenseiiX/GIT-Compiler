@@ -72,9 +72,10 @@ jobs:
  
        - name: Download & Extract Clang
          run: |
-           wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
+           wget https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/10032024/neutron-clang-10032024.tar.zst -O clang.tar.zst
            mkdir clang
-           tar -xf clang.tar.gz -C clang
+           unzstd -d clang.tar.zst
+           tar -xf clang.tar -C clang
            
        - name: Set Kernel Environment Variables
          run: |
@@ -133,11 +134,9 @@ jobs:
          id: build_start
          run: |
            echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
-           # Store UTC date for conversion later
-           echo "start_date_utc=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+           echo "start_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
        
        - name: Build Kernel
-         id: build_kernel
          run: |
            export PATH="$(pwd)/clang/bin:$PATH"
            export ARCH=arm64
@@ -146,18 +145,12 @@ jobs:
            export KBUILD_BUILD_HOST="telegram"
            cd kernel_tree
            make O=out vendor/munch_defconfig
-           
-           # Create log file directory
-           mkdir -p ../build_logs
-           
-           # Build with logging to file
+           make O=out CC=clang -j$(nproc --all) CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
            if [[ "${{ matrix.type }}" == "original" ]]; then
-             make O=out CC=clang -j$(nproc --all) CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 2>&1 | tee ../build_logs/FusionX-${{ env.KERNEL_VARIANT }}-build.log
              mv out/arch/arm64/boot/dtbo.img ../munch-aosp-dtbo.img
              mv out/arch/arm64/boot/dtb ../munch-normal-dtb
              cp out/arch/arm64/boot/Image.gz ../Image.gz
            else
-             make O=out CC=clang -j$(nproc --all) CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
              mv out/arch/arm64/boot/dtbo.img ../munch-miui-dtbo.img
              mv out/arch/arm64/boot/dtb ../munch-effcpu-dtb
            fi
@@ -181,23 +174,12 @@ jobs:
              munch-normal-dtb
              munch-effcpu-dtb
              Image.gz
-       
-       - name: Upload Build Logs
-         if: matrix.type == 'original'
-         uses: actions/upload-artifact@v4
-         with:
-           name: build-logs-${{ matrix.kernel }}
-           path: build_logs/
              
        - name: Save build metrics
          if: matrix.type == 'original'
          run: |
            mkdir -p /tmp/build-metrics
-           # Convert UTC to Philippines time (UTC+8) in 12-hour format
-           UTC_DATE="${{ steps.build_start.outputs.start_date_utc }}"
-           # Add 8 hours to UTC for PHT and format in 12-hour format
-           PH_DATE=$(date -d "$UTC_DATE UTC + 8 hours" +'%Y-%m-%d %I:%M:%S %p')  
-           echo "$PH_DATE" > /tmp/build-metrics/start-date-${{ matrix.kernel }}
+           echo "${{ steps.build_start.outputs.start_date }}" > /tmp/build-metrics/start-date-${{ matrix.kernel }}
            echo "${{ steps.build_end.outputs.build_duration }}" > /tmp/build-metrics/duration-${{ matrix.kernel }}
            # Save LTO configuration information
            if [[ "${{ github.event.inputs.USE_LTO_THIN }}" == "true" ]]; then
@@ -238,12 +220,6 @@ jobs:
          with:
            name: build-metrics-${{ matrix.kernel }}
            path: build-metrics
-           
-       - name: Download build logs
-         uses: actions/download-artifact@v4
-         with:
-           name: build-logs-${{ matrix.kernel }}
-           path: build-logs
  
        - name: Clone AnyKernel3
          run: git clone --recursive --depth=1 ${{ github.event.inputs.ANYKERNEL_URL }} -b ${{ github.event.inputs.ANYKERNEL_BRANCH }} AnyKernel3-${{ matrix.kernel }}
@@ -260,10 +236,8 @@ jobs:
            
            if [[ "${{ matrix.kernel }}" == "1" ]]; then
              BASE_NAME="FusionX-SUSFS"
-             KERNEL_VARIANT="SUSFS"
            else
              BASE_NAME="FusionX-NEXT"
-             KERNEL_VARIANT="NEXT"
            fi
            
            if [[ "${{ github.event.inputs.USE_LTO_THIN }}" == "true" ]]; then
@@ -276,7 +250,6 @@ jobs:
            
            echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
            echo "KERNEL_NAME=$KERNEL_NAME" >> $GITHUB_ENV
-           echo "KERNEL_VARIANT=$KERNEL_VARIANT" >> $GITHUB_ENV
            echo "LTO_CONFIG=$LTO_CONFIG" >> $GITHUB_ENV
            
        - name: Package Kernel
@@ -302,22 +275,17 @@ jobs:
          with:
            to: ${{ secrets.TELEGRAM_CHAT_ID }}
            token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-           message: |
-            ✅ ${{ env.KERNEL_NAME }} Compiled!!
-            Date: ${{ steps.read_metrics.outputs.start_date }}
-            Build Duration: ${{ steps.read_metrics.outputs.build_time }}
-            Device: Poco F4 (munch)
-            Branch: ${{ matrix.kernel == 1 && github.event.inputs.KERNEL_TREE_BRANCH_1 || github.event.inputs.KERNEL_TREE_BRANCH_2 }}
-            LTO: ${{ env.LTO_CONFIG }}
-            It's either a beta test or Stable build
            document: ${{ env.ZIP_NAME }}.zip
-           
-       - name: Upload Build Log to Telegram
-         uses: appleboy/telegram-action@master
-         with:
-           to: ${{ secrets.TELEGRAM_CHAT_ID }}
-           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-           document: build-logs/FusionX-${{ env.KERNEL_VARIANT }}-build.log
+           message: |
+            <b> ✅ ${{ env.KERNEL_NAME }} Kernel Build Succeeded!</b> 
+            <b>📅 Date:</b> ${{ steps.read_metrics.outputs.start_date }}
+            <b>🕔 Build Duration:</b> ${{ steps.read_metrics.outputs.build_time }}
+            <b>📱 Device Codename:</b> munch
+            <b>📑 Branch:</b> ${{ matrix.kernel == 1 && github.event.inputs.KERNEL_TREE_BRANCH_1 || github.event.inputs.KERNEL_TREE_BRANCH_2 }}
+            <b>🧬 Lto:</b> ${{ env.LTO_CONFIG }}
+            <b>📂 Filename:</b> ${{ env.ZIP_NAME }}.zip
+            <b>    It's either a CI or Stable</b>
+          
        
        - name: Upload Flashable Kernel Zip
          uses: actions/upload-artifact@v4
