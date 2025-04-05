@@ -249,22 +249,25 @@ jobs:
           
        - name: Define ZIP Name
          run: |
-           # Use Philippine timezone (UTC+8) for date with month name
-           COMPILED_DATE=$(TZ=Asia/Manila date +%b%d)
+           # Use Philippine timezone (UTC+8) for date in numeric format (month and day only)
+           COMPILED_DATE=$(TZ=Asia/Manila date +%m%d)
            LTO_CONFIG=$(cat build-metrics/lto-config-${{ matrix.kernel }} | cut -d' ' -f2)
            BUILD_TYPE=$(cat build-metrics/build-type-${{ matrix.kernel }} | cut -d' ' -f2)
            
+           # Set base name and kernel name (with build type for Telegram)
            if [[ "${{ matrix.kernel }}" == "1" ]]; then
              BASE_NAME="FusionX-SUSFS"
            else
              BASE_NAME="FusionX-NEXT"
            fi
            
+           # Create ZIP name (without build type and without THIN)
+           ZIP_NAME="${BASE_NAME}-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
+           
+           # Create kernel name for Telegram message (with build type and LTO info)
            if [[ "${{ github.event.inputs.USE_LTO_THIN }}" == "true" ]]; then
-             ZIP_NAME="${BASE_NAME}-${BUILD_TYPE}-THIN-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
              KERNEL_NAME="${BASE_NAME}-${BUILD_TYPE}-THIN"
            else
-             ZIP_NAME="${BASE_NAME}-${BUILD_TYPE}-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
              KERNEL_NAME="${BASE_NAME}-${BUILD_TYPE}"
            fi
            
@@ -307,7 +310,6 @@ jobs:
             <b>🧬 LTO:</b> ${{ env.LTO_CONFIG }}
             <b>🔄 Build Type:</b> ${{ env.BUILD_TYPE }}
             <b>📂 Filename:</b> ${{ env.ZIP_NAME }}.zip
-          
        
        - name: Upload Flashable Kernel Zip
          uses: actions/upload-artifact@v4
