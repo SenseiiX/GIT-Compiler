@@ -1,4 +1,4 @@
-name: FusionX-DEBUG-NEUTRON
+name: FusionX-AOSP-Release
  
 on:
    pull_request:
@@ -133,8 +133,9 @@ jobs:
        - name: Record build start time
          id: build_start
          run: |
+           # Set timezone to PHT (UTC+8) and use 12-hour format with AM/PM
            echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
-           echo "start_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+           echo "start_date=$(TZ=Asia/Manila date +'%b %d, %Y %I:%M:%S %p PHT')" >> $GITHUB_OUTPUT
        
        - name: Build Kernel
          run: |
@@ -231,7 +232,8 @@ jobs:
           
        - name: Define ZIP Name
          run: |
-           COMPILED_DATE=$(date +%Y%m%d)
+           # Use Philippine timezone (UTC+8) for date with month name
+           COMPILED_DATE=$(TZ=Asia/Manila date +%b%d)
            LTO_CONFIG=$(cat build-metrics/lto-config-${{ matrix.kernel }} | cut -d' ' -f2)
            
            if [[ "${{ matrix.kernel }}" == "1" ]]; then
@@ -275,15 +277,17 @@ jobs:
          with:
            to: ${{ secrets.TELEGRAM_CHAT_ID }}
            token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-           message: |
-            ✅ ${{ env.KERNEL_NAME }} Compiled!!
-            Date: ${{ steps.read_metrics.outputs.start_date }}
-            Build Duration: ${{ steps.read_metrics.outputs.build_time }}
-            Device: MUNCH
-            Branch: ${{ matrix.kernel == 1 && github.event.inputs.KERNEL_TREE_BRANCH_1 || github.event.inputs.KERNEL_TREE_BRANCH_2 }}
-            LTO: ${{ env.LTO_CONFIG }}
-            ⚠️This is a debug build, dont flash⚠️
            document: ${{ env.ZIP_NAME }}.zip
+           message: |
+            <b> ✅ ${{ env.KERNEL_NAME }} Kernel Build Succeeded!</b> 
+            <b>📅 Date:</b> ${{ steps.read_metrics.outputs.start_date }}
+            <b>🕔 Build Duration:</b> ${{ steps.read_metrics.outputs.build_time }}
+            <b>📱 Device Codename:</b> munch
+            <b>📑 Branch:</b> ${{ matrix.kernel == 1 && github.event.inputs.KERNEL_TREE_BRANCH_1 || github.event.inputs.KERNEL_TREE_BRANCH_2 }}
+            <b>🧬 Lto:</b> ${{ env.LTO_CONFIG }}
+            <b>📂 Filename:</b> ${{ env.ZIP_NAME }}.zip
+            <b>⚠️This is a debug build, dont flash⚠️</b>
+          
        
        - name: Upload Flashable Kernel Zip
          uses: actions/upload-artifact@v4
