@@ -55,7 +55,6 @@ on:
          type: boolean
          default: false
  
- 
 jobs:
    build:
      strategy:
@@ -82,12 +81,29 @@ jobs:
              1) 
                 echo "KERNEL_TREE=${{ github.event.inputs.KERNEL_TREE_1 }}" >> $GITHUB_ENV
                 echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_1 }}" >> $GITHUB_ENV
-                echo "KERNEL_VARIANT=SUSFS" >> $GITHUB_ENV ;;
+                echo "KERNEL_VARIANT=SUSFS" >> $GITHUB_ENV
+                
+                # Determine build type based on branch for kernel 1
+                if [[ "${{ github.event.inputs.KERNEL_TREE_BRANCH_1 }}" == "munch-sus" ]]; then
+                  echo "BUILD_TYPE=Stable" >> $GITHUB_ENV
+                else
+                  echo "BUILD_TYPE=Beta" >> $GITHUB_ENV
+                fi
+                ;;
              2) 
                 echo "KERNEL_TREE=${{ github.event.inputs.KERNEL_TREE_2 }}" >> $GITHUB_ENV
                 echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_2 }}" >> $GITHUB_ENV
-                echo "KERNEL_VARIANT=NEXT" >> $GITHUB_ENV ;;
+                echo "KERNEL_VARIANT=NEXT" >> $GITHUB_ENV
+                
+                # Determine build type based on branch for kernel 2
+                if [[ "${{ github.event.inputs.KERNEL_TREE_BRANCH_2 }}" == "munch-next" ]]; then
+                  echo "BUILD_TYPE=Stable" >> $GITHUB_ENV
+                else
+                  echo "BUILD_TYPE=Beta" >> $GITHUB_ENV
+                fi
+                ;;
            esac
+           
        - name: Checkout Kernel
          run: git clone --depth=1 $KERNEL_TREE -b $KERNEL_TREE_BRANCH kernel_tree
  
@@ -187,6 +203,8 @@ jobs:
            else
              echo "LTO: FULL" > /tmp/build-metrics/lto-config-${{ matrix.kernel }}
            fi
+           # Save build type information
+           echo "BUILD_TYPE: ${{ env.BUILD_TYPE }}" > /tmp/build-metrics/build-type-${{ matrix.kernel }}
        
        - name: Upload build metrics
          if: matrix.type == 'original'
@@ -234,6 +252,7 @@ jobs:
            # Use Philippine timezone (UTC+8) for date with month name
            COMPILED_DATE=$(TZ=Asia/Manila date +%b%d)
            LTO_CONFIG=$(cat build-metrics/lto-config-${{ matrix.kernel }} | cut -d' ' -f2)
+           BUILD_TYPE=$(cat build-metrics/build-type-${{ matrix.kernel }} | cut -d' ' -f2)
            
            if [[ "${{ matrix.kernel }}" == "1" ]]; then
              BASE_NAME="FusionX-SUSFS"
@@ -242,16 +261,17 @@ jobs:
            fi
            
            if [[ "${{ github.event.inputs.USE_LTO_THIN }}" == "true" ]]; then
-             ZIP_NAME="${BASE_NAME}-THIN-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
-             KERNEL_NAME="${BASE_NAME}-THIN"
+             ZIP_NAME="${BASE_NAME}-${BUILD_TYPE}-THIN-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
+             KERNEL_NAME="${BASE_NAME}-${BUILD_TYPE}-THIN"
            else
-             ZIP_NAME="${BASE_NAME}-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
-             KERNEL_NAME="${BASE_NAME}"
+             ZIP_NAME="${BASE_NAME}-${BUILD_TYPE}-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
+             KERNEL_NAME="${BASE_NAME}-${BUILD_TYPE}"
            fi
            
            echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
            echo "KERNEL_NAME=$KERNEL_NAME" >> $GITHUB_ENV
            echo "LTO_CONFIG=$LTO_CONFIG" >> $GITHUB_ENV
+           echo "BUILD_TYPE=$BUILD_TYPE" >> $GITHUB_ENV
            
        - name: Package Kernel
          run: |
@@ -277,15 +297,16 @@ jobs:
            to: ${{ secrets.TELEGRAM_CHAT_ID }}
            token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
            document: ${{ env.ZIP_NAME }}.zip
+           format: html
            message: |
             <b> ✅ ${{ env.KERNEL_NAME }} Kernel Build Succeeded!</b> 
             <b>📅 Date:</b> ${{ steps.read_metrics.outputs.start_date }}
             <b>🕔 Build Duration:</b> ${{ steps.read_metrics.outputs.build_time }}
             <b>📱 Device Codename:</b> munch
             <b>📑 Branch:</b> ${{ matrix.kernel == 1 && github.event.inputs.KERNEL_TREE_BRANCH_1 || github.event.inputs.KERNEL_TREE_BRANCH_2 }}
-            <b>🧬 Lto:</b> ${{ env.LTO_CONFIG }}
+            <b>🧬 LTO:</b> ${{ env.LTO_CONFIG }}
+            <b>🔄 Build Type:</b> ${{ env.BUILD_TYPE }}
             <b>📂 Filename:</b> ${{ env.ZIP_NAME }}.zip
-            <b>    It's either a CI or Stable</b>
           
        
        - name: Upload Flashable Kernel Zip
