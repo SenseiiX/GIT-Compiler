@@ -232,8 +232,8 @@ jobs:
           
        - name: Define ZIP Name
          run: |
-           # Use Philippine timezone (UTC+8) for date with month name
-           COMPILED_DATE=$(TZ=Asia/Manila date +%b%d)
+           # Use Philippine timezone (UTC+8) for date with month and day in numbers
+           COMPILED_DATE=$(TZ=Asia/Manila date +%m%d)
            LTO_CONFIG=$(cat build-metrics/lto-config-${{ matrix.kernel }} | cut -d' ' -f2)
            
            if [[ "${{ matrix.kernel }}" == "1" ]]; then
@@ -242,11 +242,12 @@ jobs:
              BASE_NAME="FusionX-NEXT"
            fi
            
+           # Remove THIN from the zip name, only use it for the kernel name in Telegram
+           ZIP_NAME="${BASE_NAME}-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
+           
            if [[ "${{ github.event.inputs.USE_LTO_THIN }}" == "true" ]]; then
-             ZIP_NAME="${BASE_NAME}-THIN-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
              KERNEL_NAME="${BASE_NAME}-THIN"
            else
-             ZIP_NAME="${BASE_NAME}-${{ github.event.inputs.VERSION }}-$COMPILED_DATE"
              KERNEL_NAME="${BASE_NAME}"
            fi
            
@@ -286,8 +287,9 @@ jobs:
             <b>📱 Device Codename:</b> munch
             <b>📑 Branch:</b> ${{ matrix.kernel == 1 && github.event.inputs.KERNEL_TREE_BRANCH_1 || github.event.inputs.KERNEL_TREE_BRANCH_2 }}
             <b>🧬 Lto:</b> ${{ env.LTO_CONFIG }}
+            <b>🔧 Build Type:</b> Debug Build
             <b>📂 Filename:</b> ${{ env.ZIP_NAME }}.zip
-            <b>⚠️This is a debug build, dont flash⚠️</b>
+            <b>⚠️ Debug build, dont flash⚠️</b>
           
        
        - name: Upload Flashable Kernel Zip
