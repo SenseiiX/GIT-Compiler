@@ -50,7 +50,6 @@ on:
         type: choice
         options:
         - neutron
-        - aosp clang 20
         - aosp clang 21
         - aosp clang 22
       USE_LTO_THIN:
@@ -135,7 +134,6 @@ jobs:
         with:
           path: |
             clang-neutron
-            clang-aosp-20
             clang-aosp-21
             clang-aosp-22
           key: clang-toolchain-${{ github.event.inputs.CLANG_TOOLCHAIN }}-${{ hashFiles('**/clang-version') }}
@@ -145,12 +143,7 @@ jobs:
       - name: Download & Extract Clang (If not cached)
         if: steps.cache-clang.outputs.cache-hit != 'true'
         run: |
-          if [[ "${{ github.event.inputs.CLANG_TOOLCHAIN }}" == "aosp clang 20" ]]; then
-            wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
-            mkdir -p clang-aosp-20
-            tar -xf clang.tar.gz -C clang-aosp-20
-            echo "aosp-20-r547379" > clang-version
-          elif [[ "${{ github.event.inputs.CLANG_TOOLCHAIN }}" == "aosp clang 21" ]]; then
+          if [[ "${{ github.event.inputs.CLANG_TOOLCHAIN }}" == "aosp clang 21" ]]; then
             wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/508ea7dd0d8f681904d0422e98af9613aaabf180/clang-r574158.tar.gz -O clang.tar.gz
             mkdir -p clang-aosp-21
             tar -xf clang.tar.gz -C clang-aosp-21
@@ -170,9 +163,7 @@ jobs:
 
       - name: Set Clang Path
         run: |
-          if [[ "${{ github.event.inputs.CLANG_TOOLCHAIN }}" == "aosp clang 20" ]]; then
-            echo "CLANG_PATH=$(pwd)/clang-aosp-20/bin" >> $GITHUB_ENV
-          elif [[ "${{ github.event.inputs.CLANG_TOOLCHAIN }}" == "aosp clang 21" ]]; then
+          if [[ "${{ github.event.inputs.CLANG_TOOLCHAIN }}" == "aosp clang 21" ]]; then
             echo "CLANG_PATH=$(pwd)/clang-aosp-21/bin" >> $GITHUB_ENV
           elif [[ "${{ github.event.inputs.CLANG_TOOLCHAIN }}" == "aosp clang 22" ]]; then
             echo "CLANG_PATH=$(pwd)/clang-aosp-22/bin" >> $GITHUB_ENV
