@@ -17,13 +17,12 @@ on:
           - wip-susfs
       KERNEL_TREE_BRANCH_2:
         description: 'Kernel Tree Branch (NEXT)'
-        default: 'bpf'
+        default: 'wip-next'
         required: false
         type: choice
         options:
           - stable-next
           - wip-next
-          - bpf
       KERNEL_TREE_BRANCH_3:
         description: 'Kernel Tree Branch (NOKSU)'
         default: 'wip-noksu'
