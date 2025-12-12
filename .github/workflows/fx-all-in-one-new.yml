@@ -33,7 +33,7 @@ on:
           - wip-noksu
       VERSION:
         description: 'Zip Version'
-        default: '2.'
+        default: '2.1'
         required: false
       ANYKERNEL_URL:
         description: 'AnyKernel Url'
