@@ -54,11 +54,11 @@ on:
         type: boolean
       ANYKERNEL_URL:
         description: 'AnyKernel Url'
-        default: 'https://github.com/Kenskuyy-Prjkt/AnyKernel3'
+        default: 'https://github.com/SenseiiX/AnyKernel3'
         required: false
       ANYKERNEL_BRANCH:
         description: 'AnyKernel Branch'
-        default: 'master'
+        default: 'los'
         required: false
 
 jobs:
