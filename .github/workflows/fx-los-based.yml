@@ -1,4 +1,4 @@
-name: FusionX los based (Smart Multi-DTB)
+name: FusionX los based
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
         default: 'SUSFS'
         required: true
       RKSU_BRANCH:
-        description: 'Kernel Branch (RKSU)'
+        description: 'Kernel Branch (RKSU/NOKSU)'
         default: 'RKSU'
         required: true
       VERSION:
@@ -62,8 +62,10 @@ jobs:
         include:
           - variant: SUSFS
           - variant: RKSU
+          - variant: NOKSU   # <--- Added Non-RKSU variant
     env:
       KERNEL_TREE: ${{ github.event.inputs.KERNEL_TREE }}
+      # Logic: If SUSFS, use SUSFS branch. For RKSU AND NOKSU, use RKSU branch.
       KERNEL_BRANCH: ${{ matrix.variant == 'SUSFS' && github.event.inputs.SUSFS_BRANCH || github.event.inputs.RKSU_BRANCH }}
     
     steps:
@@ -135,8 +137,23 @@ jobs:
              echo 'CONFIG_LOCALVERSION="${{ github.event.inputs.KERNEL_NAME }}"' >> arch/arm64/configs/vendor/munch_defconfig
           fi
 
+      # --- NEW LOGIC: Disable KSU for NOKSU Variant ---
+      - name: Disable KSU (For NOKSU Variant)
+        if: matrix.variant == 'NOKSU'
+        run: |
+          cd kernel_tree
+          echo "🚫 Disabling KernelSU Config..."
+          # Delete any existing CONFIG_KSU lines
+          sed -i '/CONFIG_KSU/d' arch/arm64/configs/vendor/munch_defconfig
+          # Explicitly set it to not set
+          echo "# CONFIG_KSU is not set" >> arch/arm64/configs/vendor/munch_defconfig
+          # Also remove the KSU_SUSFS interaction if it exists
+          sed -i '/CONFIG_KSU_SUSFS/d' arch/arm64/configs/vendor/munch_defconfig
+          echo "# CONFIG_KSU_SUSFS is not set" >> arch/arm64/configs/vendor/munch_defconfig
+
+      # --- CHANGED LOGIC: Only apply patch if NOT NOKSU ---
       - name: Apply Patches (SuSFS/Next)
-        if: ${{ github.event.inputs.KERNEL_PATCH == 'true' }}
+        if: ${{ github.event.inputs.KERNEL_PATCH == 'true' && matrix.variant != 'NOKSU' }}
         run: |
           cd kernel_tree
           if [ -f "nextpatch.sh" ]; then
@@ -184,38 +201,31 @@ jobs:
           
           # 2. PATCH & QUICK BUILD (SLIGHT/SWIFT)
           echo "⚡ [2/3] Patching & Building SLIGHT DTB..."
-          # Apply Slight Patches
           sed -i -e '/<2841600>,/c\<2841600>;' arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           sed -i -e '/<3187200>;/d' arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           
-          # Build ONLY DTBS (Instant)
           make O=out CC=clang -j$(nproc --all) \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
             LLVM=1 LLVM_IAS=1 dtbs
           
-          # Save Slight DTB
           cp out/arch/arm64/boot/dtb.img ../munch-slight-dtb.img
 
           # 3. PATCH & QUICK BUILD (EFFICIENCY)
           echo "🔋 [3/3] Patching & Building EFFICIENCY DTB..."
-          # Reset kona.dtsi first
           git checkout arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           
-          # Apply Efficiency Patches
           sed -i -e '/<2553600>,/c\<2553600>;' arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           sed -i '/<2649600>,/d' arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           sed -i '/<2745600>,/d' arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           sed -i '/<2841600>,/d' arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           sed -i '/<3187200>;/d' arch/arm64/boot/dts/vendor/qcom/kona.dtsi
           
-          # Build ONLY DTBS (Instant)
           make O=out CC=clang -j$(nproc --all) \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
             LLVM=1 LLVM_IAS=1 dtbs
             
-          # Save Efficiency DTB
           cp out/arch/arm64/boot/dtb.img ../munch-effcpu-dtb.img
 
       - name: Clone AnyKernel3
@@ -224,23 +234,19 @@ jobs:
 
       - name: Prepare AnyKernel3
         run: |
-          # Move Common Files
           cp Image AnyKernel3/
           if [ -f "dtbo.img" ]; then
              cp dtbo.img AnyKernel3/
           fi
           
-          # Create Structure
           mkdir -p AnyKernel3/dtbs/stock
           mkdir -p AnyKernel3/dtbs/slight
           mkdir -p AnyKernel3/dtbs/efficiency
           
-          # Move DTBs
           cp munch-stock-dtb.img AnyKernel3/dtbs/stock/dtb.img
           cp munch-slight-dtb.img AnyKernel3/dtbs/slight/dtb.img
           cp munch-effcpu-dtb.img AnyKernel3/dtbs/efficiency/dtb.img
           
-          # Set Stock as default
           cp munch-stock-dtb.img AnyKernel3/dtb
 
       - name: Define ZIP Name
@@ -249,7 +255,15 @@ jobs:
           COMPILED_DATE=$(date +%Y%m%d)
           BRANCH_NAME="${{ env.KERNEL_BRANCH }}"
           VERSION="${{ github.event.inputs.VERSION }}"
-          echo "ZIP_NAME=[FusionX-${BRANCH_NAME}]-${VERSION}-${COMPILED_DATE}" >> $GITHUB_ENV
+          
+          # Adjust name if NOKSU
+          if [[ "${{ matrix.variant }}" == "NOKSU" ]]; then
+             VARIANT_NAME="NOKSU"
+          else
+             VARIANT_NAME="${{ matrix.variant }}"
+          fi
+          
+          echo "ZIP_NAME=[FusionX-${VARIANT_NAME}]-${VERSION}-${COMPILED_DATE}" >> $GITHUB_ENV
           echo "BUILD_DATE=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
 
       - name: Zip AnyKernel3
