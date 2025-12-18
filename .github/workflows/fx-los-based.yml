@@ -1,8 +1,18 @@
-name: FusionX los based
+name: FusionX los based (Selectable Variants)
 
 on:
   workflow_dispatch:
     inputs:
+      BUILD_VARIANT:
+        description: 'Select Build Variant'
+        default: 'ALL'
+        required: true
+        type: choice
+        options:
+          - ALL
+          - SUSFS
+          - RKSU
+          - NOKSU
       KERNEL_TREE:
         description: 'Kernel Tree'
         default: 'https://github.com/Project-SenX/android_kernel_xiaomi_sm8250'
@@ -52,17 +62,31 @@ on:
         required: false
 
 jobs:
+  # 1. Configuration Job: Determines what to build
+  configure:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set Build Matrix
+        id: set-matrix
+        run: |
+          if [[ "${{ github.event.inputs.BUILD_VARIANT }}" == "ALL" ]]; then
+            echo "matrix=[\"SUSFS\", \"RKSU\", \"NOKSU\"]" >> $GITHUB_OUTPUT
+          else
+            echo "matrix=[\"${{ github.event.inputs.BUILD_VARIANT }}\"]" >> $GITHUB_OUTPUT
+          fi
+
+  # 2. Build Job: Runs based on the matrix from 'configure'
   build:
+    needs: configure
     runs-on: ubuntu-latest
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - variant: SUSFS
-          - variant: RKSU
-          - variant: NOKSU   # <--- Added Non-RKSU variant
+        variant: ${{ fromJson(needs.configure.outputs.matrix) }}
     env:
       KERNEL_TREE: ${{ github.event.inputs.KERNEL_TREE }}
       # Logic: If SUSFS, use SUSFS branch. For RKSU AND NOKSU, use RKSU branch.
@@ -137,21 +161,18 @@ jobs:
              echo 'CONFIG_LOCALVERSION="${{ github.event.inputs.KERNEL_NAME }}"' >> arch/arm64/configs/vendor/munch_defconfig
           fi
 
-      # --- NEW LOGIC: Disable KSU for NOKSU Variant ---
+      # --- Logic: Disable KSU for NOKSU Variant ---
       - name: Disable KSU (For NOKSU Variant)
         if: matrix.variant == 'NOKSU'
         run: |
           cd kernel_tree
           echo "🚫 Disabling KernelSU Config..."
-          # Delete any existing CONFIG_KSU lines
           sed -i '/CONFIG_KSU/d' arch/arm64/configs/vendor/munch_defconfig
-          # Explicitly set it to not set
           echo "# CONFIG_KSU is not set" >> arch/arm64/configs/vendor/munch_defconfig
-          # Also remove the KSU_SUSFS interaction if it exists
           sed -i '/CONFIG_KSU_SUSFS/d' arch/arm64/configs/vendor/munch_defconfig
           echo "# CONFIG_KSU_SUSFS is not set" >> arch/arm64/configs/vendor/munch_defconfig
 
-      # --- CHANGED LOGIC: Only apply patch if NOT NOKSU ---
+      # --- Logic: Only apply patch if NOT NOKSU ---
       - name: Apply Patches (SuSFS/Next)
         if: ${{ github.event.inputs.KERNEL_PATCH == 'true' && matrix.variant != 'NOKSU' }}
         run: |
@@ -256,7 +277,6 @@ jobs:
           BRANCH_NAME="${{ env.KERNEL_BRANCH }}"
           VERSION="${{ github.event.inputs.VERSION }}"
           
-          # Adjust name if NOKSU
           if [[ "${{ matrix.variant }}" == "NOKSU" ]]; then
              VARIANT_NAME="NOKSU"
           else
