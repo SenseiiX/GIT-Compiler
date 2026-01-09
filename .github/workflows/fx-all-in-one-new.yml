@@ -8,13 +8,13 @@ on:
         default: 'https://github.com/SenseiiX/fusionX_sm8250'
         required: true
       KERNEL_TREE_BRANCH_1:
-        description: 'Kernel Tree Branch (SUSFS)'
-        default: 'wip-susfs'
+        description: 'Kernel Tree Branch (RKSU)'
+        default: 'wip-rksu'
         required: false
         type: choice
         options:
-          - stable-susfs
-          - wip-susfs
+          - stable-rksu
+          - wip-rksu
       KERNEL_TREE_BRANCH_2:
         description: 'Kernel Tree Branch (NEXT)'
         default: 'wip-next'
@@ -71,13 +71,13 @@ jobs:
     strategy:
       matrix:
         include:
-          - branch: SUSFS
+          - branch: RKSU
             kernel: 3
             variant: gpustk
-          - branch: SUSFS
+          - branch: RKSU
             kernel: 4
             variant: gpustk
-          - branch: SUSFS
+          - branch: RKSU
             kernel: 6
             variant: gpustk
 
@@ -175,8 +175,8 @@ jobs:
         run: |
           echo "KERNEL_TREE=${{ github.event.inputs.KERNEL_TREE_1 }}" >> $GITHUB_ENV
           case "${{ matrix.branch }}" in
-            SUSFS) echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_1 }}" >> $GITHUB_ENV
-                   echo "BRANCH_NAME=SUSFS" >> $GITHUB_ENV ;;
+            RKSU) echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_1 }}" >> $GITHUB_ENV
+                   echo "BRANCH_NAME=RKSU" >> $GITHUB_ENV ;;
             NEXT) echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_2 }}" >> $GITHUB_ENV
                   echo "BRANCH_NAME=NEXT" >> $GITHUB_ENV ;;
             NOKSU) echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_3 }}" >> $GITHUB_ENV
@@ -228,7 +228,7 @@ jobs:
           cd kernel_tree
           patch -p1 -f < "0001-stock-gpu-freq.patch"
 
-      - name: Apply Patches (SUSFS and NEXT only)
+      - name: Apply Patches (RKSU and NEXT only)
         if: matrix.branch != 'NOKSU' && matrix.branch != 'OCUV'
         run: |
           cd kernel_tree
@@ -368,7 +368,7 @@ jobs:
     needs: build
     strategy:
       matrix:
-        branch: [SUSFS, NEXT, NOKSU]
+        branch: [RKSU, NEXT, NOKSU]
     runs-on: ubuntu-latest
 
     steps:
@@ -543,9 +543,9 @@ jobs:
           for zip_file in zip_files:
               file_name = os.path.basename(zip_file)
               
-              if "SUSFS" in file_name:
-                  branch_info = os.environ.get('KERNEL_TREE_BRANCH_1', 'susfs1')
-                  build_type = "SUSFS"
+              if "RKSU" in file_name:
+                  branch_info = os.environ.get('KERNEL_TREE_BRANCH_1', 'rksu1')
+                  build_type = "RKSU"
               elif "NEXT" in file_name:
                   branch_info = os.environ.get('KERNEL_TREE_BRANCH_2', 'next1')
                   build_type = "NEXT"
