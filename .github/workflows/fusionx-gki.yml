@@ -1,0 +1,285 @@
+name: FusionX Kernel-GKI
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_TREE:
+        description: 'Kernel Repository'
+        default: 'https://github.com/SenseiiX/fusionX-gki-6.6'
+        required: true
+      KERNEL_TREE_BRANCH:
+        description: 'Kernel Branch'
+        required: true
+        default: '6.6.89-fusionx-gki-0.1'
+      clang_version:
+        description: 'Clang Version (1=r510928, 2=Zyc 16.0.6, 3=r584948b 22.1)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+      UPLOAD_TO_RELEASE:
+        description: 'Upload to release'
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout Actions Repository
+      uses: actions/checkout@v4
+
+    - name: Display Build Configuration
+      run: |
+        echo "::group::Build Configuration"
+        echo "Kernel Tree: ${{ github.event.inputs.KERNEL_TREE }}/tree/${{ github.event.inputs.KERNEL_TREE_BRANCH }}"
+        echo "Clang Version: ${{ github.event.inputs.clang_version }}"
+        echo "Upload to Release: ${{ github.event.inputs.UPLOAD_TO_RELEASE }}"
+        echo "::endgroup::"
+
+    - name: Generate Build Date
+      id: build_date
+      run: |
+        build_date=$(date +"%Y%m%d")
+        build_time=$(date +"%Y%m%d-%H%M%S")
+        echo "build_date=$build_date" >> $GITHUB_OUTPUT
+        echo "build_time=$build_time" >> $GITHUB_OUTPUT
+
+    - name: Initialize Workspace
+      id: workspace
+      run: |
+        mkdir workspace
+        cd workspace
+        echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
+        echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
+
+    - name: Setup Build Environment
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y \
+          build-essential \
+          bc \
+          bison \
+          flex \
+          libssl-dev \
+          libncurses-dev \
+          libelf-dev \
+          libudev-dev \
+          libpci-dev \
+          libiberty-dev \
+          autoconf \
+          dwarves \
+          llvm \
+          lld \
+          zip \
+          unzip \
+          curl \
+          wget \
+          git \
+          python3 \
+          python3-pip
+      working-directory: ${{ steps.workspace.outputs.workspace-folder }}
+
+    - name: Download Clang Toolchain
+      id: clang
+      run: |
+        CLANG_CHOICE="${{ github.event.inputs.clang_version }}"
+        
+        case "$CLANG_CHOICE" in
+          1)
+            echo "Downloading AOSP Clang r510928..."
+            wget -q --show-progress \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-release/clang-r510928.tar.gz \
+              -O clang.tar.gz
+            ;;
+          2)
+            echo "Downloading Zyc Clang 16.0.6..."
+            wget -q --show-progress \
+              https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20250721-release/Clang-16.0.6-20250721.tar.gz \
+              -O clang.tar.gz
+            ;;
+          3)
+            echo "Downloading AOSP Clang 22.1 (r584948b)..."
+            wget -q --show-progress \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/42d2c090c14c9c7f4dfd365ae551e2b959dc775c/clang-r584948b.tar.gz \
+              -O clang.tar.gz
+            ;;
+        esac
+        
+        mkdir clang
+        tar -xf clang.tar.gz -C clang
+        rm -f clang.tar.gz
+        
+        export PATH="$(pwd)/clang/bin:$PATH"
+        export KBUILD_COMPILER_STRING="$($(pwd)/clang/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
+        
+        echo "clang-folder=$(pwd)/clang" >> $GITHUB_OUTPUT
+        echo "KBUILD_COMPILER_STRING=$KBUILD_COMPILER_STRING" >> $GITHUB_OUTPUT
+        echo "Clang version: $KBUILD_COMPILER_STRING"
+      working-directory: ${{ steps.workspace.outputs.workspace-folder }}
+
+    - name: Clone Kernel Source
+      id: kernel
+      run: |
+        git clone --depth=1 ${{ github.event.inputs.KERNEL_TREE }} -b ${{ github.event.inputs.KERNEL_TREE_BRANCH }} kernel_tree
+        echo "kernel-folder=$(pwd)/kernel_tree" >> $GITHUB_OUTPUT
+      working-directory: ${{ steps.workspace.outputs.workspace-folder }}
+
+    - name: Setup KernelSU Next
+      run: |
+        echo "Setting up KernelSU Next..."
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s stable
+        
+        # Add CONFIG_KSU=y to defconfig
+        echo "Adding CONFIG_KSU=y to defconfig..."
+        if [ -f "arch/arm64/configs/rodin_defconfig" ]; then
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/rodin_defconfig
+          echo "CONFIG_KSU=y added to rodin_defconfig"
+        fi
+      working-directory: ${{ steps.kernel.outputs.kernel-folder }}
+
+    - name: Change Local Version
+      run: |
+        echo "Changing LOCALVERSION..."
+        # Find and replace LOCALVERSION in defconfig or Makefile
+        if [ -f "arch/arm64/configs/rodin_defconfig" ]; then
+          # Replace in defconfig if it exists
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="FusionX-aosp-gki-jinwoo-0.1"/' arch/arm64/configs/rodin_defconfig
+          echo "Updated LOCALVERSION in rodin_defconfig"
+        fi
+        
+        # Also update in .config after defconfig is applied (will do this after make defconfig)
+        echo 'CONFIG_LOCALVERSION="FusionX-aosp-gki-jinwoo-0.1"' > localversion_override.txt
+      working-directory: ${{ steps.kernel.outputs.kernel-folder }}
+
+    - name: Build Kernel Configuration
+      run: |
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export PATH="${{ steps.clang.outputs.clang-folder }}/bin:$PATH"
+        
+        make O=out \
+          CC=clang \
+          LLVM=1 \
+          LLVM_IAS=1 \
+          KCFLAGS="-w" \
+          rodin_defconfig
+        
+        # Apply LOCALVERSION override to .config
+        if [ -f "localversion_override.txt" ]; then
+          cat localversion_override.txt >> out/.config
+          echo "Applied LOCALVERSION override to .config"
+        fi
+      working-directory: ${{ steps.kernel.outputs.kernel-folder }}
+
+    - name: Build Kernel
+      id: build
+      run: |
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export PATH="${{ steps.clang.outputs.clang-folder }}/bin:$PATH"
+        
+        make -j17 \
+          O=out \
+          CC=clang \
+          LLVM=1 \
+          LLVM_IAS=1 \
+          KCFLAGS="-w"
+        
+        echo "elapsed_time=$(echo "$(date +%s)"-"${{ steps.workspace.outputs.start_time }}" | bc)" >> $GITHUB_OUTPUT
+      working-directory: ${{ steps.kernel.outputs.kernel-folder }}
+
+    - name: Prepare AnyKernel3
+      id: anykernel
+      run: |
+        # Clean up old kernel zip files
+        echo "Cleaning up old kernel zip files..."
+        find . -maxdepth 1 -type f -name "FusionX-AOSP-GKI-*.zip" -exec rm -v {} \; || true
+        
+        # Clone AnyKernel3
+        if [ -d "anykernel" ]; then
+          cp -r anykernel anykernel_temp
+        else
+          echo "Error: anykernel directory not found!"
+          exit 1
+        fi
+        
+        cd anykernel_temp
+        
+        # Copy kernel image
+        if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ]; then
+          cp -v ../out/arch/arm64/boot/Image.gz-dtb ./
+        elif [ -f "../out/arch/arm64/boot/Image.gz" ]; then
+          cp -v ../out/arch/arm64/boot/Image.gz ./
+        elif [ -f "../out/arch/arm64/boot/Image" ]; then
+          cp -v ../out/arch/arm64/boot/Image ./
+        else
+          echo "Error: No kernel image found!"
+          exit 1
+        fi
+        
+        # Create flashable zip
+        ZIP_NAME="FusionX-AOSP-GKI-${{ steps.build_date.outputs.build_time }}.zip"
+        zip -r9 ../$ZIP_NAME ./*
+        cd ..
+        rm -rf anykernel_temp
+        
+        echo "zipname=$ZIP_NAME" >> $GITHUB_OUTPUT
+        
+        # Calculate build time
+        BUILD_END=$(date +"%s")
+        DIFF=$((BUILD_END - ${{ steps.workspace.outputs.start_time }}))
+        
+        echo ""
+        echo "=========================================="
+        echo "Build completed in $((DIFF / 60))m $((DIFF % 60))s"
+        echo "Final zip: $ZIP_NAME"
+        echo "Zip size: $(du -h "$ZIP_NAME" | cut -f1)"
+        echo "=========================================="
+      working-directory: ${{ steps.kernel.outputs.kernel-folder }}
+
+    - name: Upload to Release
+      if: github.event.inputs.UPLOAD_TO_RELEASE == 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ${{ steps.kernel.outputs.kernel-folder }}/${{ steps.anykernel.outputs.zipname }}
+        name: FusionX-${{ steps.build_date.outputs.build_date }}
+        tag_name: FusionX-${{ steps.build_date.outputs.build_date }}
+        body: |
+          ## FusionX AOSP GKI Kernel with KernelSU Next ✅
+          
+          **Build Information:**
+          - **Compiler**: ${{ steps.clang.outputs.KBUILD_COMPILER_STRING }}
+          - **Build Date**: ${{ steps.build_date.outputs.build_time }}
+          - **Build Time**: ${{ steps.build.outputs.elapsed_time }} seconds
+          - **KernelSU**: Next (Stable)
+          - **Kernel Tree**: ${{ github.event.inputs.KERNEL_TREE }}/tree/${{ github.event.inputs.KERNEL_TREE_BRANCH }}
+          
+          **Installation:**
+          1. Download the zip file
+          2. Reboot to recovery
+          3. Flash the zip
+          4. Reboot and enjoy!
+          
+          **Action**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Kernel Zip as Artifact
+      if: github.event.inputs.UPLOAD_TO_RELEASE != 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.anykernel.outputs.zipname }}
+        path: ${{ steps.kernel.outputs.kernel-folder }}/${{ steps.anykernel.outputs.zipname }}
+        retention-days: 30
+
+    - name: Cleanup
+      if: always()
+      run: |
+        echo "Build workflow completed!"
