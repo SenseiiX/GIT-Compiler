@@ -10,7 +10,7 @@ on:
       KERNEL_TREE_BRANCH:
         description: 'Kernel Branch'
         required: true
-        default: '6.6.89-capybara-gki-1.0'
+        default: '6.6.89-fusionx-gki-0.1'
       clang_version:
         description: 'Clang Version (1=r510928, 2=Zyc 16.0.6, 3=r584948b 22.1)'
         required: true
