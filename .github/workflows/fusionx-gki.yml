@@ -10,7 +10,7 @@ on:
       KERNEL_TREE_BRANCH:
         description: 'Kernel Branch'
         required: true
-        default: '6.6.89-fusionx-gki-0.1'
+        default: '6.6.89-capybara-gki-1.0'
       clang_version:
         description: 'Clang Version (1=r510928, 2=Zyc 16.0.6, 3=r584948b 22.1)'
         required: true
@@ -147,15 +147,12 @@ jobs:
     - name: Change Local Version
       run: |
         echo "Changing LOCALVERSION..."
-        # Find and replace LOCALVERSION in defconfig or Makefile
+        # Remove any existing LOCALVERSION from defconfig first
         if [ -f "arch/arm64/configs/rodin_defconfig" ]; then
-          # Replace in defconfig if it exists
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="FusionX-aosp-gki-jinwoo-0.1"/' arch/arm64/configs/rodin_defconfig
+          sed -i '/CONFIG_LOCALVERSION/d' arch/arm64/configs/rodin_defconfig
+          echo 'CONFIG_LOCALVERSION="-FusionX-aosp-gki-jinwoo-0.1"' >> arch/arm64/configs/rodin_defconfig
           echo "Updated LOCALVERSION in rodin_defconfig"
         fi
-        
-        # Also update in .config after defconfig is applied (will do this after make defconfig)
-        echo 'CONFIG_LOCALVERSION="FusionX-aosp-gki-jinwoo-0.1"' > localversion_override.txt
       working-directory: ${{ steps.kernel.outputs.kernel-folder }}
 
     - name: Build Kernel Configuration
@@ -170,12 +167,6 @@ jobs:
           LLVM_IAS=1 \
           KCFLAGS="-w" \
           rodin_defconfig
-        
-        # Apply LOCALVERSION override to .config
-        if [ -f "localversion_override.txt" ]; then
-          cat localversion_override.txt >> out/.config
-          echo "Applied LOCALVERSION override to .config"
-        fi
       working-directory: ${{ steps.kernel.outputs.kernel-folder }}
 
     - name: Build Kernel
