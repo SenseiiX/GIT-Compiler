@@ -17,11 +17,11 @@ on:
           - '6.6.56-fusionx'
       CUSTOM_LOCALVERSION:
         description: 'Custom Kernel Version'
-        default: '-FusionX-v0.1-Stratum-GKI6.6-SenXLab'
+        default: '-FusionX-v1.0-Jinwoo-GKI6.6-SenXLab'
         required: false
       CUSTOM_ZIP_NAME:
         description: 'Custom ZIP Name'
-        default: '[FusionX]-STRATUM-GKI-0.1'
+        default: '[FusionX]-KSUNEXT-GKI-1.0'
         required: false
       RELEASE_REPO:
         description: 'Release Repository'
@@ -34,9 +34,8 @@ on:
         type: choice
         options:
           - 'aosp-18'
-          - 'zyc-16'
           - 'aosp-22'
-          - 'neutron-19'
+          - 'zyc-23'
       UPLOAD_TO_RELEASE:
         description: 'Upload to release'
         type: boolean
@@ -63,9 +62,8 @@ jobs:
         
         case "${{ github.event.inputs.clang_version }}" in
           aosp-18) echo "Clang Version: AOSP Clang 18 (r510928)" ;;
-          zyc-16) echo "Clang Version: Zyc Clang 16.0.6" ;;
           aosp-22) echo "Clang Version: AOSP Clang 22.1 (r584948b)" ;;
-          neutron-19) echo "Clang Version: Neutron Clang 19 (10032024)" ;;
+          zyc-23) echo "Clang Version: Zyc Clang 23.0.0git (20260129)" ;;
         esac
         
         echo "Upload to Release: ${{ github.event.inputs.UPLOAD_TO_RELEASE }}"
@@ -139,15 +137,6 @@ jobs:
             tar -xf clang.tar.gz -C clang
             rm -f clang.tar.gz
             ;;
-          zyc-16)
-            echo "Downloading Zyc Clang 16.0.6..."
-            wget -q --show-progress \
-              https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20250721-release/Clang-16.0.6-20250721.tar.gz \
-              -O clang.tar.gz
-            mkdir clang
-            tar -xf clang.tar.gz -C clang
-            rm -f clang.tar.gz
-            ;;
           aosp-22)
             echo "Downloading AOSP Clang 22.1 (r584948b)..."
             wget -q --show-progress \
@@ -157,17 +146,14 @@ jobs:
             tar -xf clang.tar.gz -C clang
             rm -f clang.tar.gz
             ;;
-          neutron-19)
-            echo "Downloading Neutron Clang 19 (10032024)..."
-            sudo apt-get install -y zstd
+          zyc-23)
+            echo "Downloading Zyc Clang 23.0.0git (20260129)..."
             wget -q --show-progress \
-              https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/10032024/neutron-clang-10032024.tar.zst \
-              -O clang.tar.zst
+              https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260129-release/Clang-23.0.0git-20260129.tar.gz \
+              -O clang.tar.gz
             mkdir clang
-            unzstd -d clang.tar.zst -o clang.tar
-            tar -xf clang.tar -C clang
-            rm -f clang.tar.zst clang.tar
-            echo "neutron-10032024" > clang-version
+            tar -xf clang.tar.gz -C clang
+            rm -f clang.tar.gz
             ;;
         esac
         
@@ -204,19 +190,19 @@ jobs:
         curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s stable
         
         echo "Adding CONFIG_KSU=y to defconfig..."
-        if [ -f "arch/arm64/configs/rodin_defconfig" ]; then
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/rodin_defconfig
-          echo "CONFIG_KSU=y added to rodin_defconfig"
+        if [ -f "arch/arm64/configs/fusionx_defconfig" ]; then
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/fusionx_defconfig
+          echo "CONFIG_KSU=y added to fusionx_defconfig"
         fi
       working-directory: ${{ steps.kernel.outputs.kernel-folder }}
 
     - name: Change Local Version
       run: |
         echo "Changing LOCALVERSION to: ${{ github.event.inputs.CUSTOM_LOCALVERSION }}"
-        if [ -f "arch/arm64/configs/rodin_defconfig" ]; then
-          sed -i '/CONFIG_LOCALVERSION/d' arch/arm64/configs/rodin_defconfig
-          echo 'CONFIG_LOCALVERSION="${{ github.event.inputs.CUSTOM_LOCALVERSION }}"' >> arch/arm64/configs/rodin_defconfig
-          echo "Updated LOCALVERSION to ${{ github.event.inputs.CUSTOM_LOCALVERSION }} in rodin_defconfig"
+        if [ -f "arch/arm64/configs/fusionx_defconfig" ]; then
+          sed -i '/CONFIG_LOCALVERSION/d' arch/arm64/configs/fusionx_defconfig
+          echo 'CONFIG_LOCALVERSION="${{ github.event.inputs.CUSTOM_LOCALVERSION }}"' >> arch/arm64/configs/fusionx_defconfig
+          echo "Updated LOCALVERSION to ${{ github.event.inputs.CUSTOM_LOCALVERSION }} in fusionx_defconfig"
         fi
       working-directory: ${{ steps.kernel.outputs.kernel-folder }}
 
@@ -233,7 +219,7 @@ jobs:
           LLVM=1 \
           LLVM_IAS=1 \
           KCFLAGS="-w" \
-          rodin_defconfig
+          fusionx_defconfig
       working-directory: ${{ steps.kernel.outputs.kernel-folder }}
 
     - name: Build Kernel
@@ -385,9 +371,8 @@ jobs:
 
         clang_names = {
             'aosp-18': 'AOSP Clang 18 (r510928)',
-            'zyc-16': 'Zyc Clang 16.0.6',
             'aosp-22': 'AOSP Clang 22.1 (r584948b)',
-            'neutron-19': 'Neutron Clang 19 (10032024)'
+            'zyc-23': 'Zyc Clang 23.0.0git (20260129)'
         }
         clang_name = clang_names.get(clang_version, 'Unknown')
 
