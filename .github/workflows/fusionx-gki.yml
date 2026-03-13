@@ -36,6 +36,14 @@ on:
           - 'aosp-18'
           - 'aosp-22'
           - 'zyc-23'
+      KSUNEXT_BRANCH:
+        description: 'KernelSU Next Branch'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - 'stable'
+          - 'dev'
       UPLOAD_TO_RELEASE:
         description: 'Upload to release'
         type: boolean
@@ -66,6 +74,7 @@ jobs:
           zyc-23) echo "Clang Version: Zyc Clang 23.0.0git (20260129)" ;;
         esac
         
+        echo "KernelSU Next Branch: ${{ github.event.inputs.KSUNEXT_BRANCH }}"
         echo "Upload to Release: ${{ github.event.inputs.UPLOAD_TO_RELEASE }}"
         echo "::endgroup::"
 
@@ -186,8 +195,9 @@ jobs:
 
     - name: Setup KernelSU Next
       run: |
-        echo "Setting up KernelSU Next..."
-        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s stable
+        KSUNEXT_BRANCH="${{ github.event.inputs.KSUNEXT_BRANCH }}"
+        echo "Setting up KernelSU Next ($KSUNEXT_BRANCH branch)..."
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s $KSUNEXT_BRANCH
         
         echo "Adding CONFIG_KSU=y to defconfig..."
         if [ -f "arch/arm64/configs/fusionx_defconfig" ]; then
@@ -298,6 +308,7 @@ jobs:
           **Build Information:**
           - **Compiler**: ${{ steps.clang.outputs.KBUILD_COMPILER_STRING || steps.clang-cached.outputs.KBUILD_COMPILER_STRING }}
           - **Kernel Branch**: ${{ github.event.inputs.KERNEL_TREE_BRANCH }}
+          - **KernelSU Next Branch**: ${{ github.event.inputs.KSUNEXT_BRANCH }}
           - **Build Date**: ${{ steps.build_date.outputs.build_time }}
           - **Build Time**: ${{ steps.build.outputs.elapsed_time }} seconds
           - **Kernel Tree**: ${{ github.event.inputs.KERNEL_TREE }}/tree/${{ github.event.inputs.KERNEL_TREE_BRANCH }}
@@ -330,6 +341,7 @@ jobs:
         CLANG_VERSION: ${{ github.event.inputs.clang_version }}
         CUSTOM_LOCALVERSION: ${{ github.event.inputs.CUSTOM_LOCALVERSION }}
         KERNEL_BRANCH: ${{ github.event.inputs.KERNEL_TREE_BRANCH }}
+        KSUNEXT_BRANCH: ${{ github.event.inputs.KSUNEXT_BRANCH }}
         BUILD_TIME: ${{ steps.build.outputs.elapsed_time }}
         ZIP_FILE_PATH: ${{ steps.kernel.outputs.kernel-folder }}/${{ steps.anykernel.outputs.zipname }}
         BUILD_DATE: ${{ steps.build_date.outputs.build_time }}
@@ -365,6 +377,7 @@ jobs:
         chat_id = os.environ.get('TELEGRAM_CHAT_ID')
         clang_version = os.environ.get('CLANG_VERSION', 'aosp-18')
         kernel_branch = os.environ.get('KERNEL_BRANCH', 'unknown')
+        ksunext_branch = os.environ.get('KSUNEXT_BRANCH', 'stable')
         build_time = os.environ.get('BUILD_TIME', 'unknown')
         zip_file_path = os.environ.get('ZIP_FILE_PATH')
         build_date = os.environ.get('BUILD_DATE')
@@ -401,6 +414,7 @@ jobs:
             =====================================
             <b>Date:</b>        {current_time}
             <b>Branch:</b>      {kernel_branch}
+            <b>KSU Next:</b>    {ksunext_branch}
             <b>Clang:</b>       {clang_name}
             <b>Build Time:</b>  {build_time_formatted}
             =====================================
