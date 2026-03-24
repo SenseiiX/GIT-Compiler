@@ -10,18 +10,18 @@ on:
       KERNEL_TREE_BRANCH:
         description: 'Kernel Branch'
         required: true
-        default: '6.6.89-fusionx'
+        default: '6.6.56-fusionx'
         type: choice
         options:
           - '6.6.89-fusionx'
           - '6.6.56-fusionx'
       CUSTOM_LOCALVERSION:
         description: 'Custom Kernel Version'
-        default: '-FusionX-v1.0-Jinwoo-GKI6.6-SenXLab'
+        default: '-FusionX-v3.0-Kizaru-GKI6.6-SenXLab'
         required: false
       CUSTOM_ZIP_NAME:
         description: 'Custom ZIP Name'
-        default: '[FusionX]-KSUNEXT-GKI-1.0'
+        default: '[FusionX]-KSUNEXT-GKI-3.0'
         required: false
       RELEASE_REPO:
         description: 'Release Repository'
@@ -39,7 +39,7 @@ on:
       KSUNEXT_BRANCH:
         description: 'KernelSU Next Branch'
         required: true
-        default: 'stable'
+        default: 'dev'
         type: choice
         options:
           - 'stable'
